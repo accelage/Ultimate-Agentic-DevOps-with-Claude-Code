@@ -28,6 +28,75 @@ resource "aws_s3_bucket_versioning" "website_bucket" {
   }
 }
 
+# Enable server-side encryption for S3 bucket
+resource "aws_s3_bucket_server_side_encryption_configuration" "website_bucket" {
+  bucket = aws_s3_bucket.website_bucket.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+# S3 access logging disabled - CloudFront logs are sufficient for audit trail
+# Enabling S3 logging adds PUT request costs. CloudFront already logs all accesses.
+
+# S3 bucket for storing access logs
+resource "aws_s3_bucket" "logs_bucket" {
+  bucket = "${var.project_name}-logs-${data.aws_caller_identity.current.account_id}"
+
+  tags = {
+    Name        = "${var.project_name}-logs"
+    Project     = var.project_name
+    Environment = var.environment
+  }
+}
+
+# Block public access to logs bucket
+resource "aws_s3_bucket_public_access_block" "logs_bucket" {
+  bucket = aws_s3_bucket.logs_bucket.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+# Note: Versioning disabled on logs bucket - logs are immutable, no need for versions.
+# Use lifecycle rules instead to manage log retention and cost.
+
+# Enable encryption on logs bucket
+resource "aws_s3_bucket_server_side_encryption_configuration" "logs_bucket" {
+  bucket = aws_s3_bucket.logs_bucket.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+# Lifecycle policy for logs bucket - optimize storage costs
+resource "aws_s3_bucket_lifecycle_configuration" "logs_bucket" {
+  bucket = aws_s3_bucket.logs_bucket.id
+
+  rule {
+    id     = "delete-old-logs"
+    status = "Enabled"
+
+    filter {}
+
+    expiration {
+      days = var.log_retention_days
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = 1
+    }
+  }
+}
+
 # CloudFront Origin Access Control (OAC)
 resource "aws_cloudfront_origin_access_control" "s3_oac" {
   name                              = "${var.project_name}-oac"
@@ -77,6 +146,12 @@ resource "aws_cloudfront_distribution" "s3_distribution" {
   default_root_object = "index.html"
   price_class         = "PriceClass_200"
 
+  logging_config {
+    include_cookies = false
+    bucket          = "${aws_s3_bucket.logs_bucket.id}.s3.amazonaws.com"
+    prefix          = "cloudfront-logs/"
+  }
+
   # Default cache behavior
   default_cache_behavior {
     allowed_methods = ["GET", "HEAD", "OPTIONS"]
@@ -89,6 +164,7 @@ resource "aws_cloudfront_distribution" "s3_distribution" {
     response_headers_policy_id = "67d7728d-91e3-45ff-a51d-4ac0860bdbda"
 
     viewer_protocol_policy = "redirect-to-https"
+    compress               = true
   }
 
   # Custom error response - redirect 404 to index.html for SPA-style routing
@@ -111,6 +187,7 @@ resource "aws_cloudfront_distribution" "s3_distribution" {
     response_headers_policy_id = "67d7728d-91e3-45ff-a51d-4ac0860bdbda"
 
     viewer_protocol_policy = "redirect-to-https"
+    compress               = true
   }
 
   # Cache behavior for CSS and JavaScript
@@ -125,6 +202,7 @@ resource "aws_cloudfront_distribution" "s3_distribution" {
     response_headers_policy_id = "67d7728d-91e3-45ff-a51d-4ac0860bdbda"
 
     viewer_protocol_policy = "redirect-to-https"
+    compress               = true
   }
 
   restrictions {

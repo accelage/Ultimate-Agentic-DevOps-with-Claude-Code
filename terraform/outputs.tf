@@ -17,3 +17,13 @@ output "s3_bucket_arn" {
   description = "S3 bucket ARN"
   value       = aws_s3_bucket.website_bucket.arn
 }
+
+output "logs_bucket_name" {
+  description = "S3 logs bucket name"
+  value       = aws_s3_bucket.logs_bucket.id
+}
+
+output "logs_bucket_arn" {
+  description = "S3 logs bucket ARN"
+  value       = aws_s3_bucket.logs_bucket.arn
+}

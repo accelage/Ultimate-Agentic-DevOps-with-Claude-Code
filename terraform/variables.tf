@@ -21,3 +21,9 @@ variable "domain_name" {
   type        = string
   default     = ""
 }
+
+variable "log_retention_days" {
+  description = "Number of days to retain CloudFront and access logs (older logs are automatically deleted)"
+  type        = number
+  default     = 30
+}
