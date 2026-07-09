@@ -11,3 +11,5 @@ override.tf.json
 *_override.tf.json
 .DS_Store
 .claude/settings.local.json
+.claude/deploy.log
+.claude/agent-memory/
